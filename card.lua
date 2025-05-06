@@ -1,55 +1,88 @@
 
 require "vector"
 
-Card = {}
-Card.__index = Card
+CardClass = {}
 
-function Card:new(suit, rank)
-    local card = {
-        suit = suit,
-        rank = rank,
-        face_up = false,
-        state = "idle", -- can be "idle", "grabbed", or "mouse_over"
-        position = Vector(0, 0),
-        offset = Vector(0, 0)
-    }
-    setmetatable(card, Card)
-    return card
+CARD_STATE = {
+  IDLE = 0,
+  MOUSE_OVER = 1,
+  GRABBED = 2
+}
+
+SUIT = {
+  HEARTS = "hearts",
+  DIAMONDS = "diamonds",
+  CLUBS = "clubs",
+  SPADES = "spades"
+}
+
+function CardClass:new(xPos, yPos, suit, rank)
+  local card = {}
+  local metadata = {__index = CardClass}
+  setmetatable(card, metadata)
+  
+  card.position = Vector(xPos, yPos)
+  card.size = Vector(50, 70)
+  
+  card.state = CARD_STATE.IDLE -- Default to Idle state
+  
+  card.suit = suit
+  card.rank = rank
+  
+  return card
 end
 
-function Card:isMouseOver(mx, my)
-    local x, y = self.position.x, self.position.y
-    return mx > x and mx < x + 72 and my > y and my < y + 96 -- assuming card size
+function CardClass:update()
+  if self.state == CARD_STATE.GRABBED and grabber then
+    -- Update position to follow mouse, accounting for grab offset
+    local mousePos = grabber.currentMousePos
+    if mousePos then
+      self.position = Vector(mousePos.x - self.size.x/2, mousePos.y -self.size.y/2)
+    end
+  end
 end
 
-function Card:draw()
-  local x, y = self.position.x, self.position.y
+function CardClass:draw()
+  -- Drop shadow if held or hovered
+  if self.state ~= CARD_STATE.IDLE then
+    love.graphics.setColor(0, 0, 0, 0.8)
+    local offset = 4 * (self.state == CARD_STATE.GRABBED and 2 or 1)
+    love.graphics.rectangle("fill", self.position.x + offset, self.position.y + offset, self.size.x, self.size.y, 6, 6)
+  end
+  
+  -- Draw base
+  love.graphics.setColor(1, 1, 1, 1)
+  love.graphics.rectangle("fill", self.position.x, self.position.y, self.size.x, self.size.y, 6, 6)
+  
+  -- Draw suit and rank
+  if (self.suit == "hearts" or self.suit == "diamonds") then
+    love.graphics.setColor(1, 0, 0, 1)
+  else
+    love.graphics.setColor(0, 0, 0, 1)
+  end
+  if suitImages[self.suit] then
+    love.graphics.draw(suitImages[self.suit], self.position.x + 10, self.position.y + 10)
+  end
+  if rankImages[self.rank] then
+    love.graphics.draw(rankImages[self.rank], self.position.x + 30, self.position.y + 10)
+  end
+end
 
-  if not self.face_up then
-    love.graphics.draw(images.card_face_down, x, y)
+function CardClass:checkForMouseOver(grabber)
+  if self.state == CARD_STATE.GRABBED then
     return
   end
 
-  -- Base card
-  love.graphics.draw(images.card, x, y)
+  local mousePos = grabber.currentMousePos
+  if not mousePos then return false end
 
-  -- Corner: mini suit + rank
-  local mini_suit = images["mini_" .. self.suit]
-  local rank_img = images[self.rank]
-  if mini_suit then love.graphics.draw(mini_suit, x + 8, y + 8) end
-  if rank_img then love.graphics.draw(rank_img, x + 28, y + 8) end
+  local isMouseOver =
+    mousePos.x > self.position.x and
+    mousePos.x < self.position.x + self.size.x and
+    mousePos.y > self.position.y and
+    mousePos.y < self.position.y + self.size.y
 
-  -- Face card or pip
-  if self.rank >= 11 and self.rank <= 13 then
-    local face_key = ({ [11]="jack", [12]="queen", [13]="king" })[self.rank]
-    local portrait = images["face_" .. face_key]
-    if portrait then
-      love.graphics.draw(portrait, x + 10, y + 40) -- adjust position as needed
-    end
-  else
-    local center_pip = images["pip_" .. self.suit]
-    if center_pip then
-      love.graphics.draw(center_pip, x + 25, y + 40)
-    end
-  end
+  self.state = isMouseOver and CARD_STATE.MOUSE_OVER or CARD_STATE.IDLE
+  
+  return isMouseOver
 end
